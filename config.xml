@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<module>
+    <namespace>NsTranslator</namespace>
+    <version>1.0</version>
+    <author>NexoPOS</author>
+    <name>NexoPOS Translator</name>
+    <description>
+        <locale lang="en">Translates NexoPOS core and module localization files using Ollama API</locale>
+    </description>
+</module>
