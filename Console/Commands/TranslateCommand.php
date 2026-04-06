@@ -14,13 +14,13 @@ class TranslateCommand extends Command
         {--lang=* : Target language code(s). If empty, all target languages are translated.}
         {--scope=all : Scope of translation: core, modules, or all}
         {--module= : Translate a specific module by namespace}
-        {--test-connection : Test the Ollama connection and exit}
+        {--test-connection : Test the configured translation provider connection and exit}
         {--dry-run : Show what would be translated without actually translating}';
 
     /**
      * The console command description.
      */
-    protected $description = 'Translate NexoPOS core and module localization files using Ollama AI.';
+    protected $description = 'Translate NexoPOS core and module localization files using AI (Ollama or OpenAI).';    
 
     public function __construct(
         private TranslationService $translationService
@@ -68,13 +68,14 @@ class TranslateCommand extends Command
         $sourceLang = $this->translationService->getSourceLanguage();
 
         $this->info( '╔══════════════════════════════════════════════╗' );
-        $this->info( '║       NexoPOS Translator (Ollama AI)        ║' );
+        $this->info( '║         NexoPOS Translator (AI)             ║' );
         $this->info( '╚══════════════════════════════════════════════╝' );
         $this->newLine();
         $this->line( '  Source language : <comment>' . $this->translationService->getLanguageName( $sourceLang ) . " ({$sourceLang})</comment>" );
         $this->line( '  Target(s)      : <comment>' . implode( ', ', array_keys( $availableTargets ) ) . '</comment>' );
         $this->line( '  Scope           : <comment>' . $scope . '</comment>' );
-        $this->line( '  Model           : <comment>' . $this->translationService->getModel() . '</comment>' );
+        $this->line( '  Provider        : <comment>' . strtoupper( $this->translationService->getProvider() ) . '</comment>' );
+        $this->line( '  Model           : <comment>' . $this->translationService->getActiveModel() . '</comment>' );
         $this->line( '  Batch size      : <comment>' . $this->translationService->getBatchSize() . '</comment>' );
         $this->line( '  Skip existing   : <comment>' . ( $this->translationService->shouldSkipExisting() ? 'Yes' : 'No' ) . '</comment>' );
 
@@ -269,9 +270,17 @@ class TranslateCommand extends Command
      */
     private function handleTestConnection(): int
     {
-        $this->info( 'Testing Ollama connection...' );
-        $this->line( '  Host  : ' . $this->translationService->getHost() );
-        $this->line( '  Model : ' . $this->translationService->getModel() );
+        $provider = $this->translationService->getProvider();
+
+        $this->info( 'Testing ' . strtoupper( $provider ) . ' connection...' );
+
+        if ( $provider === 'openai' ) {
+            $this->line( '  Model : ' . $this->translationService->getOpenAiModel() );
+        } else {
+            $this->line( '  Host  : ' . $this->translationService->getHost() );
+            $this->line( '  Model : ' . $this->translationService->getModel() );
+        }
+
         $this->newLine();
 
         $result = $this->translationService->testConnection();
@@ -279,15 +288,18 @@ class TranslateCommand extends Command
         if ( $result['status'] === 'success' ) {
             $this->info( '  ✓ ' . $result['message'] );
             $this->newLine();
-            $this->line( '  Available models:' );
 
-            foreach ( $result['models'] ?? [] as $model ) {
-                $configuredModel = $this->translationService->getModel();
-                $marker = str_starts_with( $configuredModel, explode( ':', $model )[0] ) ? ' <info>← configured</info>' : '';
-                $this->line( "    • {$model}{$marker}" );
+            if ( ! empty( $result['models'] ) ) {
+                $this->line( '  Model(s):' );
+                $configuredModel = $this->translationService->getActiveModel();
+
+                foreach ( $result['models'] as $model ) {
+                    $marker = str_starts_with( $configuredModel, explode( ':', $model )[0] ) ? ' <info>← configured</info>' : '';
+                    $this->line( "    • {$model}{$marker}" );
+                }
+
+                $this->newLine();
             }
-
-            $this->newLine();
 
             return 0;
         }

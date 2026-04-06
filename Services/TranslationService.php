@@ -32,6 +32,48 @@ class TranslationService
     }
 
     /**
+     * Get the configured translation provider (ollama or openai).
+     */
+    public function getProvider(): string
+    {
+        return ns()->option->get( 'ns_translator_provider', 'ollama' );
+    }
+
+    /**
+     * Get the OpenAI API key.
+     */
+    public function getOpenAiApiKey(): string
+    {
+        return (string) ns()->option->get( 'ns_translator_openai_api_key', '' );
+    }
+
+    /**
+     * Get the OpenAI model name.
+     */
+    public function getOpenAiModel(): string
+    {
+        return ns()->option->get( 'ns_translator_openai_model', 'gpt-4o-mini' );
+    }
+
+    /**
+     * Get the OpenAI request timeout.
+     */
+    public function getOpenAiTimeout(): int
+    {
+        return (int) ns()->option->get( 'ns_translator_openai_timeout', 120 );
+    }
+
+    /**
+     * Get the active model name based on the configured provider.
+     */
+    public function getActiveModel(): string
+    {
+        return $this->getProvider() === 'openai'
+            ? $this->getOpenAiModel()
+            : $this->getModel();
+    }
+
+    /**
      * Get the batch size for translation.
      */
     public function getBatchSize(): int
@@ -152,7 +194,7 @@ class TranslationService
     }
 
     /**
-     * Translate a batch of strings using Ollama.
+     * Translate a batch of strings using the configured provider.
      *
      * @param  array  $strings       Associative array of key => source_value
      * @param  string $targetLang    Target language name (e.g. "French")
@@ -167,8 +209,19 @@ class TranslationService
             return [];
         }
 
-        $numberedStrings = [];
+        return match ( $this->getProvider() ) {
+            'openai' => $this->translateBatchOpenAI( $strings, $targetLang, $targetCode ),
+            default  => $this->translateBatchOllama( $strings, $targetLang, $targetCode ),
+        };
+    }
+
+    /**
+     * Translate a batch using the Ollama API.
+     */
+    private function translateBatchOllama( array $strings, string $targetLang, string $targetCode ): array
+    {
         $keys = array_keys( $strings );
+        $numberedStrings = [];
 
         foreach ( array_values( $strings ) as $index => $value ) {
             $numberedStrings[] = ( $index + 1 ) . '. ' . $value;
@@ -178,9 +231,9 @@ class TranslationService
 
         $response = Http::timeout( $this->getTimeout() )
             ->post( $this->getHost() . '/api/generate', [
-                'model' => $this->getModel(),
-                'prompt' => $prompt,
-                'stream' => false,
+                'model'   => $this->getModel(),
+                'prompt'  => $prompt,
+                'stream'  => false,
                 'options' => [
                     'temperature' => 0.1,
                     'num_predict' => 4096,
@@ -193,8 +246,53 @@ class TranslationService
             );
         }
 
-        $body = $response->json();
-        $responseText = $body['response'] ?? '';
+        $responseText = $response->json( 'response', '' );
+
+        return $this->parseTranslationResponse( $responseText, $keys );
+    }
+
+    /**
+     * Translate a batch using the OpenAI Chat Completions API.
+     */
+    private function translateBatchOpenAI( array $strings, string $targetLang, string $targetCode ): array
+    {
+        $keys = array_keys( $strings );
+        $numberedStrings = [];
+
+        foreach ( array_values( $strings ) as $index => $value ) {
+            $numberedStrings[] = ( $index + 1 ) . '. ' . $value;
+        }
+
+        $prompt = $this->buildPrompt( $numberedStrings, $targetLang, $targetCode );
+
+        $response = Http::timeout( $this->getOpenAiTimeout() )
+            ->withHeaders( [
+                'Authorization' => 'Bearer ' . $this->getOpenAiApiKey(),
+                'Content-Type'  => 'application/json',
+            ] )
+            ->post( 'https://api.openai.com/v1/chat/completions', [
+                'model'       => $this->getOpenAiModel(),
+                'messages'    => [
+                    [
+                        'role'    => 'system',
+                        'content' => 'You are a professional translator assistant.',
+                    ],
+                    [
+                        'role'    => 'user',
+                        'content' => $prompt,
+                    ],
+                ],
+                'temperature' => 0.1,
+                'max_tokens'  => 4096,
+            ] );
+
+        if ( ! $response->successful() ) {
+            throw new \RuntimeException(
+                'OpenAI API request failed with status ' . $response->status() . ': ' . $response->body()
+            );
+        }
+
+        $responseText = $response->json( 'choices.0.message.content', '' );
 
         return $this->parseTranslationResponse( $responseText, $keys );
     }
@@ -254,7 +352,7 @@ PROMPT;
     public function getModulesWithLang(): array
     {
         $modules = [];
-        $moduleService = app( \App\Services\ModulesService::class );
+        $moduleService = app( \Ns\Services\ModulesService::class );
         $enabledModules = $moduleService->getEnabled();
 
         foreach ( $enabledModules as $module ) {
@@ -277,9 +375,20 @@ PROMPT;
     }
 
     /**
-     * Test the Ollama connection.
+     * Test the connection to the configured translation provider.
      */
     public function testConnection(): array
+    {
+        return match ( $this->getProvider() ) {
+            'openai' => $this->testOpenAIConnection(),
+            default  => $this->testOllamaConnection(),
+        };
+    }
+
+    /**
+     * Test the Ollama API connection.
+     */
+    private function testOllamaConnection(): array
     {
         try {
             $response = Http::timeout( 10 )
@@ -291,19 +400,51 @@ PROMPT;
                     ->toArray();
 
                 return [
-                    'status' => 'success',
+                    'status'  => 'success',
                     'message' => 'Connected to Ollama successfully.',
-                    'models' => $models,
+                    'models'  => $models,
                 ];
             }
 
             return [
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => 'Failed to connect: HTTP ' . $response->status(),
             ];
         } catch ( \Exception $e ) {
             return [
-                'status' => 'error',
+                'status'  => 'error',
+                'message' => 'Connection failed: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Test the OpenAI API connection.
+     */
+    private function testOpenAIConnection(): array
+    {
+        try {
+            $response = Http::timeout( 10 )
+                ->withHeaders( [
+                    'Authorization' => 'Bearer ' . $this->getOpenAiApiKey(),
+                ] )
+                ->get( 'https://api.openai.com/v1/models' );
+
+            if ( $response->successful() ) {
+                return [
+                    'status'  => 'success',
+                    'message' => 'Connected to OpenAI successfully.',
+                    'models'  => [ $this->getOpenAiModel() ],
+                ];
+            }
+
+            return [
+                'status'  => 'error',
+                'message' => 'Failed to connect: HTTP ' . $response->status(),
+            ];
+        } catch ( \Exception $e ) {
+            return [
+                'status'  => 'error',
                 'message' => 'Connection failed: ' . $e->getMessage(),
             ];
         }

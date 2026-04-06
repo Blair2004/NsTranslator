@@ -2,7 +2,7 @@
 namespace Modules\NsTranslator;
 
 use Illuminate\Support\Facades\Event;
-use App\Services\Module;
+use Ns\Services\Module;
 
 class NsTranslatorModule extends Module
 {

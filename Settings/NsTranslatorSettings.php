@@ -2,10 +2,10 @@
 
 namespace Modules\NsTranslator\Settings;
 
-use App\Classes\FormInput;
-use App\Classes\SettingForm;
-use App\Services\Helper;
-use App\Services\SettingsPage;
+use Ns\Classes\FormInput;
+use Ns\Classes\SettingForm;
+use Ns\Services\Helper;
+use Ns\Services\SettingsPage;
 
 class NsTranslatorSettings extends SettingsPage
 {
@@ -17,9 +17,10 @@ class NsTranslatorSettings extends SettingsPage
     {
         $this->form = SettingForm::form(
             title: __m( 'Translator Settings', 'NsTranslator' ),
-            description: __m( 'Configure the Ollama API connection used for translating localization files.', 'NsTranslator' ),
+            description: __m( 'Configure the translation provider (Ollama or OpenAI) used for translating localization files.', 'NsTranslator' ),
             tabs: SettingForm::tabs(
                 $this->getOllamaSettings(),
+                $this->getOpenAiSettings(),
                 $this->getTranslationSettings(),
             )
         );
@@ -55,12 +56,53 @@ class NsTranslatorSettings extends SettingsPage
         );
     }
 
+    public function getOpenAiSettings()
+    {
+        return SettingForm::tab(
+            identifier: 'openai',
+            label: __m( 'OpenAI API', 'NsTranslator' ),
+            fields: SettingForm::fields(
+                FormInput::password(
+                    label: __m( 'API Key', 'NsTranslator' ),
+                    name: 'ns_translator_openai_api_key',
+                    value: ns()->option->get( 'ns_translator_openai_api_key', '' ),
+                    validation: 'sometimes',
+                    description: __m( 'Your OpenAI API key (sk-...). Required when OpenAI is selected as the translation provider.', 'NsTranslator' ),
+                ),
+                FormInput::text(
+                    label: __m( 'Model', 'NsTranslator' ),
+                    name: 'ns_translator_openai_model',
+                    value: ns()->option->get( 'ns_translator_openai_model', 'gpt-4o-mini' ),
+                    validation: 'required',
+                    description: __m( 'The OpenAI model to use for translations. Example: gpt-4o-mini, gpt-4o, gpt-4-turbo', 'NsTranslator' ),
+                ),
+                FormInput::number(
+                    label: __m( 'Request Timeout (seconds)', 'NsTranslator' ),
+                    name: 'ns_translator_openai_timeout',
+                    value: ns()->option->get( 'ns_translator_openai_timeout', 120 ),
+                    description: __m( 'Maximum time in seconds to wait for a response from OpenAI.', 'NsTranslator' ),
+                ),
+            ),
+        );
+    }
+
     public function getTranslationSettings()
     {
         return SettingForm::tab(
             identifier: 'translation',
             label: __m( 'Translation', 'NsTranslator' ),
             fields: SettingForm::fields(
+                FormInput::select(
+                    label: __m( 'Translation Provider', 'NsTranslator' ),
+                    name: 'ns_translator_provider',
+                    value: ns()->option->get( 'ns_translator_provider', 'ollama' ),
+                    options: Helper::kvToJsOptions( [
+                        'ollama' => __m( 'Ollama', 'NsTranslator' ),
+                        'openai' => __m( 'OpenAI', 'NsTranslator' ),
+                    ] ),
+                    validation: 'required',
+                    description: __m( 'Select the AI provider to use for translations. Configure the corresponding tab before translating.', 'NsTranslator' ),
+                ),
                 FormInput::number(
                     label: __m( 'Batch Size', 'NsTranslator' ),
                     name: 'ns_translator_batch_size',

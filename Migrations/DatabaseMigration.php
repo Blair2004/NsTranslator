@@ -6,7 +6,7 @@
 
 namespace Modules\NsTranslator\Migrations;
 
-use App\Classes\Schema;
+use Ns\Classes\Schema;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Migrations\Migration;
 

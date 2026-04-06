@@ -2,8 +2,8 @@
 
 namespace Modules\NsTranslator\Providers;
 
-use App\Classes\AsideMenu;
-use App\Classes\Hook;
+use Ns\Classes\AsideMenu;
+use Ns\Classes\Hook;
 use Illuminate\Support\ServiceProvider;
 
 class NsTranslatorServiceProvider extends ServiceProvider
@@ -18,7 +18,7 @@ class NsTranslatorServiceProvider extends ServiceProvider
                     ...AsideMenu::subMenu(
                         label: __m( 'Translator', 'NsTranslator' ),
                         identifier: 'ns-translator',
-                        href: ns()->route( 'ns.dashboard.settings', ['settings' => 'ns_translator'] ),
+                        href: nsRoute( 'ns.dashboard.settings', ['settings' => 'ns_translator'] ),
                         permissions: ['manage.options']
                     ),
                 ];
