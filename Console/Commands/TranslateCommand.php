@@ -118,6 +118,8 @@ class TranslateCommand extends Command
                 }
             }
 
+            dump( $modules );
+
             foreach ( $modules as $module ) {
                 $result = $this->translateSource(
                     label: "Module: {$module['name']}",
